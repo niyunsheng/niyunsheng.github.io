@@ -1,0 +1,22 @@
+.notes {
+    float:left;
+    text-align: left;
+    margin:3%;
+    width:40%;
+    background-color: #f3f3f3;
+}
+
+.notes h1{
+    text-align: center;
+    color: black;
+    font-family: arial;
+    font-size:30px;
+}
+
+.notes div{
+    float:left;
+    margin:1%;
+}
+.notes div a:hover:not(.active) {
+    background-color: #3cf;
+}

@@ -1,0 +1,22 @@
+.resume {
+    float:left;
+    text-align: left;
+
+    position: relative;
+    left:10%;
+}
+.resume img{
+    width:10%;
+}
+.resume h1{
+    font-size:30px;
+}
+.resume h2{
+    font-size:25px;
+}
+.resume h3{
+    font-size:20px;
+}
+.resume p{
+    font-size:15px;
+}
