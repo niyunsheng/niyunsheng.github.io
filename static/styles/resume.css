@@ -1,4 +1,4 @@
-.resume {
+.content {
     float:left;
     text-align: left;
 
@@ -6,18 +6,18 @@
     left:10%;
     display:none;
 }
-.resume img{
+.content img{
     width:10%;
 }
-.resume h1{
+.content h1{
     font-size:30px;
 }
-.resume h2{
+.content h2{
     font-size:25px;
 }
-.resume h3{
+.content h3{
     font-size:20px;
 }
-.resume p{
+.content p{
     font-size:15px;
 }

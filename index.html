@@ -5,16 +5,25 @@
     <link rel="icon" href="./static/images/dipper_logo.ico">
     <link href="./static/styles/resume.css" type="text/css" rel="stylesheet" />
     <script language="JavaScript" type="text/JavaScript">
-        function click(){
-            document.getElementById("con").style.display="none";
+        function a(){
+            document.getElementById("but").style.display="none";
+            document.getElementById("resume").style.display="block";
+        }
+        function b(){
+            document.getElementById("but").style.display="none";
+            document.getElementById("notes").style.display="block";
         }
     </script>
 </head>
 <body>
 
 <!-- 正文 -->
-<div id='con'><button type="button" onClick="click();">Click Me!</button><div>
-<div class='resume'>
+<div id='but'>
+    <button type="button" onClick="a();">resume</button>
+    <button type="button" onClick="b();">study notes</button>
+</div>
+
+<div class='content' id='resume'>
 <h1>Yunsheng Ni</h1>
 
 <h2>contact me</h2>
@@ -34,9 +43,17 @@
 <h2>Publications</h2>
 <h3><a href="none">None</a><a href="none"> [PDF] </a><a href="none"> [Repo] </a></h3>
 
+</div>
 
+<div class='content' id='notes'>
+<h1>Yunsheng Ni</h1>
+
+<p><a href="https://niyunsheng.gitbook.io/deeplearning">深度学习</a></p>
+<p><a href="https://niyunsheng.gitbook.io/algorithm">算法笔记</a></p>
+<p><a href="https://niyunsheng.gitbook.io/webpage">前后端笔记</a></p>
+
+</div>
 </body>
-
 
 </html>
 
