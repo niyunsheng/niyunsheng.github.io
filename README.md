@@ -1,3 +1,3 @@
 # niyunsheng.github.io
 
-resume
+goto https://niyunsheng.github.io/ for more information
