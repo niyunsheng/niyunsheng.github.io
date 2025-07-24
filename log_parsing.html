@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>多日志对比图表</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:"Microsoft YaHei",sans-serif;background:#f5f5f5;height:100vh;display:flex}
+.main{flex:1;display:flex;align-items:center;justify-content:center;padding:20px}
+.chart-container{position:relative;width:100%;height:100%;background:#fff;border-radius:10px;padding:20px;box-shadow:0 4px 6px rgba(0,0,0,.1)}
+canvas{width:100%;height:100%;display:block}
+.sidebar{width:300px;background:#fff;border-left:1px solid #ddd;padding:20px;display:flex;flex-direction:column;gap:15px;overflow-y:auto}
+.sidebar h2{margin:0 0 10px;font-size:18px}
+.drop-zone{border:3px dashed #007bff;border-radius:8px;padding:30px 10px;text-align:center;background:#f8f9fa;transition:.3s;font-size:14px;cursor:pointer}
+.drop-zone.dragover{background:#e3f2fd;border-color:#2196f3}
+label{font-weight:bold;margin-bottom:5px;display:block}
+input[type=text],input[type=number]{width:100%;padding:8px;border:1px solid #ccc;border-radius:4px}
+.file-list{flex:1;overflow-y:auto}
+.file-item{background:#f8f9fa;margin:4px 0;padding:6px 8px;border-radius:4px;font-size:14px;display:flex;justify-content:space-between;align-items:center}
+.file-item button{background:#dc3545;color:#fff;border:none;border-radius:3px;padding:2px 6px;font-size:12px;cursor:pointer}
+.color-dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px}
+</style>
+</head>
+<body>
+
+<div class="main">
+  <div class="chart-container">
+    <canvas id="logChart"></canvas>
+  </div>
+</div>
+
+<div class="sidebar">
+  <h2>日志与字段</h2>
+  <div class="drop-zone" id="dropZone">
+    拖拽日志文件到此处<br>或点击选择
+    <input type="file" id="fileInput" multiple accept=".log,.txt" style="display:none">
+  </div>
+  <div>
+    <label for="xAxisInput">X 轴字段</label>
+    <input type="text" id="xAxisInput" placeholder="Step" value="Step">
+  </div>
+  <div>
+    <label for="yAxisInput">Y 轴字段</label>
+    <input type="text" id="yAxisInput" placeholder="TPS" value="TPS">
+  </div>
+  <div>
+    <label for="smoothInput">平滑系数 (0-1)</label>
+    <input type="number" id="smoothInput" min="0" max="1" step="0.01" value="0.9">
+  </div>
+  <div>
+    <button id="resetZoomBtn" style="width:100%;margin-top:10px;background:#007bff;color:#fff;border:none;border-radius:5px;padding:8px;cursor:pointer;">重置缩放</button>
+  </div>
+  <h3>已加载日志</h3>
+  <div class="file-list" id="fileList"></div>
+</div>
+
+<script>
+const fileData = new Map();
+const colors = ['#007bff','#28a745','#ffc107','#dc3545','#17a2b8','#6f42c1','#fd7e14','#20c997'];
+let chartInstance = null;
+
+const dropZone   = document.getElementById('dropZone');
+const fileInput  = document.getElementById('fileInput');
+const xInput     = document.getElementById('xAxisInput');
+const yInput     = document.getElementById('yAxisInput');
+const smoothInput= document.getElementById('smoothInput');
+const fileList   = document.getElementById('fileList');
+const resetZoomBtn = document.getElementById('resetZoomBtn');
+
+resetZoomBtn.addEventListener('click', () => {
+  if (chartInstance) chartInstance.resetZoom();
+});
+
+['dragover','dragleave','drop'].forEach(evt=>{
+  dropZone.addEventListener(evt,e=>{
+    e.preventDefault();
+    evt==='dragover'?dropZone.classList.add('dragover'):dropZone.classList.remove('dragover');
+    if(evt==='drop') handleFiles(e.dataTransfer.files);
+  });
+});
+dropZone.addEventListener('click',()=>fileInput.click());
+fileInput.addEventListener('change',e=>handleFiles(e.target.files));
+[xInput,yInput,smoothInput].forEach(el=>el.addEventListener('input',updateChart));
+
+function handleFiles(files){ [...files].forEach(processFile); }
+
+function processFile(file){
+  if(!/\.(log|txt)$/i.test(file.name)) return;
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    const parsed = parseLog(reader.result);
+    const key = file.name + '_' + Date.now();
+    fileData.set(key, {data:parsed, color:colors[fileData.size%colors.length], realName:file.name});
+    renderFileList();
+    updateChart();
+  };
+  reader.readAsText(file);
+}
+
+function parseLog(content) {
+  const lines = content.split('\n').filter(l => l.trim());
+  const arr = [];
+  lines.forEach(line => {
+    const obj = {};
+    const pairs = line.matchAll(
+      /([a-zA-Z0-9_\s]+?)\s*:\s*([+-]?\d*\.?\d+(?:[eE][+-]?\d+)?|nan|inf|['"\[\]\w\s,.]+)/g
+    );
+    for (const m of pairs) {
+      let key = m[1].trim();
+      let val = m[2].trim();
+      if (/^([+-]?\d*\.?\d+(?:[eE][+-]?\d+)?|nan|inf)$/i.test(val)) {
+        val = parseFloat(val);
+        if (isNaN(val) && val.toString() !== 'NaN') val = NaN;
+      } else if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+        val = val.slice(1, -1);
+      } else if (val.startsWith('[') && val.endsWith(']')) {
+        val = val.slice(1, -1).split(',').map(s => s.trim().replace(/^['"]|['"]$/g, ''));
+      }
+      obj[key] = val;
+    }
+    if (Object.keys(obj).length) arr.push(obj);
+  });
+  return arr;
+}
+
+function renderFileList(){
+  fileList.innerHTML='';
+  fileData.forEach((info,key)=>{
+    const div=document.createElement('div');
+    div.className='file-item';
+    div.innerHTML=`
+      <span><span class="color-dot" style="background:${info.color}"></span>${info.realName}</span>
+      <button onclick="removeFile('${key}')">移除</button>`;
+    fileList.appendChild(div);
+  });
+}
+
+function removeFile(key){
+  fileData.delete(key);
+  renderFileList();
+  updateChart();
+}
+
+function smoothData(points, alpha){
+  if(!points.length) return [];
+  const smoothed = [];
+  let numer = 0;
+  let denom = 0;
+  for (let i = 0; i < points.length; i++) {
+    const w = 1 - alpha;
+    numer = numer * alpha + points[i].y * w;
+    denom = denom * alpha + w;
+    smoothed.push({ x: points[i].x, y: numer / denom });
+  }
+  return smoothed;
+}
+
+function updateChart(){
+  const xKey = xInput.value.trim() || 'Step';
+  const yKey = yInput.value.trim() || 'TPS';
+  const alpha = parseFloat(smoothInput.value) || 0;
+  const ctx = document.getElementById('logChart').getContext('2d');
+  if (chartInstance) chartInstance.destroy();
+
+  const datasets = [];
+  fileData.forEach((info, key) => {
+    const rawPoints = info.data
+      .filter(d => !isNaN(d[xKey]) && !isNaN(d[yKey]))
+      .map(d => ({ x: +d[xKey], y: +d[yKey] }))
+      .sort((a, b) => a.x - b.x);
+    const smoothPoints = smoothData(rawPoints, alpha);
+    datasets.push({
+      label: info.realName,
+      data: smoothPoints,
+      borderColor: info.color,
+      backgroundColor: info.color + '00',
+      borderWidth: 2,
+      tension: 0,
+      pointRadius: 1.0,
+      pointHoverRadius: 3,
+      fill: false
+    });
+    datasets.push({
+      label: '',
+      data: rawPoints,
+      borderColor: info.color + '26',
+      backgroundColor: info.color + '00',
+      borderWidth: 0.5,
+      tension: 0,
+      pointRadius: 0,
+      fill: false
+    });
+  });
+
+  chartInstance = new Chart(ctx, {
+    type: 'line',
+    data: { datasets },
+    options: {
+      animation: false,
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          labels: {
+            filter: (legendItem) => legendItem.text !== '',
+            usePointStyle: false,
+            boxWidth: 30,
+            boxHeight: 2,
+            pointStyle: 'line'
+          }
+        },
+        title: {
+          display: true,
+          text: `${yKey} vs ${xKey}`
+        },
+        zoom: {
+          pan:  {
+            enabled: true,
+            mode: 'xy',
+            modifierKey: 'ctrl', // **修改点**: 按住 Ctrl 键进行平移
+          },
+          zoom: {
+            wheel:  { enabled: true },
+            drag:   { enabled: true, backgroundColor: 'rgba(0,119,255,0.2)' },
+            pinch:  { enabled: true },
+            mode:   'xy'
+          }
+        }
+      },
+      scales: {
+        x: { type: 'linear', title: { display: true, text: xKey } },
+        y: { title: { display: true, text: yKey } }
+      }
+    }
+  });
+}
+</script>
+</body>
+</html>
