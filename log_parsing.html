@@ -8,8 +8,8 @@
 <style>
 *{box-sizing:border-box}
 body{margin:0;font-family:"Microsoft YaHei",sans-serif;background:#f5f5f5;height:100vh;display:flex}
-.main{flex:1;display:flex;align-items:center;justify-content:center;padding:20px}
-.chart-container{position:relative;width:100%;height:100%;background:#fff;border-radius:10px;padding:20px;box-shadow:0 4px 6px rgba(0,0,0,.1)}
+.main{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;gap:20px}
+.chart-container{position:relative;width:100%;flex:1;background:#fff;border-radius:10px;padding:20px;box-shadow:0 4px 6px rgba(0,0,0,.1);min-height:0}
 canvas{width:100%;height:100%;display:block}
 .sidebar{width:300px;background:#fff;border-left:1px solid #ddd;padding:20px;display:flex;flex-direction:column;gap:15px;overflow-y:auto}
 .sidebar h2{margin:0 0 10px;font-size:18px}
@@ -28,6 +28,9 @@ input[type=text],input[type=number]{width:100%;padding:8px;border:1px solid #ccc
 <div class="main">
   <div class="chart-container">
     <canvas id="logChart"></canvas>
+  </div>
+  <div class="chart-container" id="divisionChartContainer" style="display:none;">
+    <canvas id="divisionChart"></canvas>
   </div>
 </div>
 
@@ -60,6 +63,7 @@ input[type=text],input[type=number]{width:100%;padding:8px;border:1px solid #ccc
 const fileData = new Map();
 const colors = ['#007bff','#28a745','#ffc107','#dc3545','#17a2b8','#6f42c1','#fd7e14','#20c997'];
 let chartInstance = null;
+let divisionChartInstance = null;
 
 const dropZone   = document.getElementById('dropZone');
 const fileInput  = document.getElementById('fileInput');
@@ -68,9 +72,11 @@ const yInput     = document.getElementById('yAxisInput');
 const smoothInput= document.getElementById('smoothInput');
 const fileList   = document.getElementById('fileList');
 const resetZoomBtn = document.getElementById('resetZoomBtn');
+const divisionChartContainer = document.getElementById('divisionChartContainer');
 
 resetZoomBtn.addEventListener('click', () => {
   if (chartInstance) chartInstance.resetZoom();
+  if (divisionChartInstance) divisionChartInstance.resetZoom();
 });
 
 ['dragover','dragleave','drop'].forEach(evt=>{
@@ -161,17 +167,24 @@ function updateChart(){
   const xKey = xInput.value.trim() || 'Step';
   const yKey = yInput.value.trim() || 'TPS';
   const alpha = parseFloat(smoothInput.value) || 0;
-  const ctx = document.getElementById('logChart').getContext('2d');
-  if (chartInstance) chartInstance.destroy();
 
-  const datasets = [];
+  if (chartInstance) chartInstance.destroy();
+  if (divisionChartInstance) {
+      divisionChartInstance.destroy();
+      divisionChartInstance = null;
+  }
+  divisionChartContainer.style.display = 'none';
+
+  const mainCtx = document.getElementById('logChart').getContext('2d');
+  const mainChartDatasets = [];
+  
   fileData.forEach((info, key) => {
     const rawPoints = info.data
       .filter(d => !isNaN(d[xKey]) && !isNaN(d[yKey]))
       .map(d => ({ x: +d[xKey], y: +d[yKey] }))
       .sort((a, b) => a.x - b.x);
     const smoothPoints = smoothData(rawPoints, alpha);
-    datasets.push({
+    mainChartDatasets.push({
       label: info.realName,
       data: smoothPoints,
       borderColor: info.color,
@@ -182,7 +195,7 @@ function updateChart(){
       pointHoverRadius: 3,
       fill: false
     });
-    datasets.push({
+    mainChartDatasets.push({
       label: '',
       data: rawPoints,
       borderColor: info.color + '26',
@@ -194,47 +207,84 @@ function updateChart(){
     });
   });
 
-  chartInstance = new Chart(ctx, {
-    type: 'line',
-    data: { datasets },
-    options: {
+  const chartOptions = {
       animation: false,
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
         legend: {
-          labels: {
-            filter: (legendItem) => legendItem.text !== '',
-            usePointStyle: false,
-            boxWidth: 30,
-            boxHeight: 2,
-            pointStyle: 'line'
-          }
+          labels: { filter: (item) => item.text !== '', usePointStyle: false, boxWidth: 30, boxHeight: 2, pointStyle: 'line' }
         },
-        title: {
-          display: true,
-          text: `${yKey} vs ${xKey}`
-        },
+        title: { display: true },
         zoom: {
-          pan:  {
-            enabled: true,
-            mode: 'xy',
-            modifierKey: 'ctrl', // **修改点**: 按住 Ctrl 键进行平移
-          },
-          zoom: {
-            wheel:  { enabled: true },
-            drag:   { enabled: true, backgroundColor: 'rgba(0,119,255,0.2)' },
-            pinch:  { enabled: true },
-            mode:   'xy'
-          }
+          pan:  { enabled: true, mode: 'xy', modifierKey: 'ctrl' },
+          zoom: { wheel:  { enabled: true }, drag:   { enabled: true, backgroundColor: 'rgba(0,119,255,0.2)' }, pinch:  { enabled: true }, mode:   'xy' }
         }
       },
       scales: {
         x: { type: 'linear', title: { display: true, text: xKey } },
         y: { title: { display: true, text: yKey } }
       }
+  };
+
+  chartOptions.plugins.title.text = `${yKey} vs ${xKey}`;
+  chartInstance = new Chart(mainCtx, { type: 'line', data: { datasets: mainChartDatasets }, options: chartOptions });
+
+  if (fileData.size === 2) {
+    divisionChartContainer.style.display = 'block';
+    
+    const [info1, info2] = fileData.values();
+    const getPoints = (info) => info.data
+        .filter(d => !isNaN(d[xKey]) && !isNaN(d[yKey]))
+        .map(d => ({ x: +d[xKey], y: +d[yKey] }))
+        .sort((a,b) => a.x - b.x);
+
+    const points1 = getPoints(info1);
+    const points2 = getPoints(info2);
+    const points2Map = new Map(points2.map(p => [p.x, p.y]));
+
+    const divisionData = [];
+    for (const p1 of points1) {
+        if (points2Map.has(p1.x)) {
+            const y2 = points2Map.get(p1.x);
+            if (y2 !== 0 && isFinite(y2)) {
+                divisionData.push({ x: p1.x, y: p1.y / y2 });
+            }
+        }
     }
-  });
+
+    const smoothedDivisionData = smoothData(divisionData, alpha);
+    
+    const divisionCtx = document.getElementById('divisionChart').getContext('2d');
+    const divisionDatasets = [
+        {
+            label: `Ratio (${info1.realName} / ${info2.realName})`,
+            data: smoothedDivisionData,
+            borderColor: '#8e44ad',
+            borderWidth: 2,
+            pointRadius: 1.0,
+            fill: false
+        },
+        {
+            label: '',
+            data: divisionData,
+            borderColor: '#8e44ad26',
+            borderWidth: 0.5,
+            pointRadius: 0,
+            fill: false
+        }
+    ];
+
+    const divisionOptions = JSON.parse(JSON.stringify(chartOptions));
+    divisionOptions.plugins.title.text = `Division Result (${yKey}) vs ${xKey}`;
+    divisionOptions.scales.y.title.text = `Ratio (${yKey})`;
+
+    divisionChartInstance = new Chart(divisionCtx, {
+        type: 'line',
+        data: { datasets: divisionDatasets },
+        options: divisionOptions
+    });
+  }
 }
 </script>
 </body>
