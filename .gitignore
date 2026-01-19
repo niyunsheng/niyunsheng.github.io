@@ -1,0 +1,51 @@
+# -----------------------------------------------------------------
+# Hugo Generated Files (Crucial)
+# -----------------------------------------------------------------
+# Ignore the generated static site. 
+# Since you use GitHub Actions, the 'public' folder is built on the 
+# server side. Committing this causes conflicts and repo bloat.
+/public/
+
+# Hugo's asset cache (processed images, minified CSS, etc.)
+/resources/_gen/
+
+# Temporary lock file during local server execution
+.hugo_build.lock
+
+# -----------------------------------------------------------------
+# Operating System Files
+# -----------------------------------------------------------------
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# macOS (If you or a contributor switches to a Mac)
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Linux
+*~
+
+# -----------------------------------------------------------------
+# Editor & IDE Configuration
+# -----------------------------------------------------------------
+# VS Code (Local workspace settings)
+.vscode/
+
+# JetBrains (PyCharm, GoLand, IntelliJ)
+.idea/
+*.iml
+
+# Vim / Emacs swap files
+*.swp
+*.swo
+
+# -----------------------------------------------------------------
+# Dependencies (Future proofing)
+# -----------------------------------------------------------------
+node_modules/
+npm-debug.log
+yarn-error.log

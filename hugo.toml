@@ -14,7 +14,7 @@ buildFuture = false
 [params]
   env = "production"
   title = "Yunsheng Ni"
-  description = "Bridging Algorithms and Systems. Accelerating Video Generation & LLMs through Distributed Systems and Kernel Optimization."
+  description = "Engineering notes by Yunsheng Ni. Focusing on System Optimization, Custom Kernels, and Model Acceleration for LLMs & Video Generation."
   keywords = ["MLSys", "AI Infra", "LLM", "Video Generation", "Distributed Training", "Triton", "CUTLASS"]
   author = "Yunsheng Ni"
   
@@ -26,14 +26,17 @@ buildFuture = false
   ShowBreadCrumbs = true
   ShowCodeCopyButtons = true
   ShowWordCount = true
+
+  mainSections = ["posts", "projects", "thoughts"]
+  ShowHidden = true
   
   [params.profileMode]
-    enabled = true
-    title = "Yunsheng Ni"
-    subtitle = "AI Engineer bridging Algorithms & Systems. \n Dedicated to accelerating model iteration via efficient Infra & Kernels."
-    imageUrl = "https://github.com/niyunsheng.png"
-    imageTitle = "Yunsheng Ni"
-    
+    enabled = false
+
+  [params.homeInfoParams]
+    Title = "Hi, I'm Yunsheng Ni 👋"
+    Content = "Engineering notes on System Optimization & Kernel Tuning.  \n Focusing on accelerating LLMs & Video Generation."
+
     [[params.profileMode.buttons]]
       name = "Blog"
       url = "/posts"
@@ -54,6 +57,10 @@ buildFuture = false
   [params.math]
     enable = true
 
+[taxonomies]
+  category = "categories"
+  tag = "tags"
+  series = "series"
 
 [menu]
   [[menu.main]]
@@ -69,22 +76,16 @@ buildFuture = false
     weight = 20
 
   [[menu.main]]
-    identifier = "publications"
-    name = "Publications"
-    url = "/publications/"
-    weight = 30
-
-  [[menu.main]]
     identifier = "memos"
     name = "Thoughts"
     url = "/thoughts/"
-    weight = 40
+    weight = 30
 
   [[menu.main]]
     identifier = "search"
     name = "Search"
     url = "/search/"
-    weight = 50
+    weight = 40
 
 [outputs]
   home = ["HTML", "RSS", "JSON"]

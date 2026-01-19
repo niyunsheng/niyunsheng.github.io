@@ -1,5 +1,5 @@
-+++
-date = '2026-01-19T23:27:34+08:00'
-draft = true
-title = 'Projects'
-+++
+---
+title: "Selected Works"
+description: "Solving efficiency bottlenecks in Video Generation. From interactive debugging tools to high-performance Triton kernels."
+hidemeta: true
+---
