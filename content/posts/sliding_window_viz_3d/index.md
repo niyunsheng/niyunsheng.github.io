@@ -1,5 +1,5 @@
 ---
-title: Visualizing 3D Attention: Bridging the Gap Between 1D Sequences and 3D Space"
+title: "Visualizing 3D Attention: Bridging the Gap Between 1D Sequences and 3D Space"
 date: 2026-01-26T23:30:00+08:00
 draft: false
 tags: ["Visualization", "DiT"]
