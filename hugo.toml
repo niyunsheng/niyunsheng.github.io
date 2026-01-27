@@ -29,6 +29,8 @@ buildFuture = false
 
   mainSections = ["posts", "projects", "thoughts"]
   ShowHidden = true
+
+  math = true
   
   [params.profileMode]
     enabled = false
@@ -53,9 +55,6 @@ buildFuture = false
   [[params.socialIcons]]
     name = "email"
     url = "mailto:yunshengn@gmail.com"
-
-  [params.math]
-    enable = true
 
 [taxonomies]
   category = "categories"
