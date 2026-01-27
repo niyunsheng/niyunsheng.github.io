@@ -77,16 +77,22 @@ buildFuture = false
     weight = 20
 
   [[menu.main]]
-    identifier = "memos"
-    name = "Thoughts"
-    url = "/thoughts/"
+    identifier = "archives"
+    name = "Archives"
+    url = "/archives/"
     weight = 30
+
+  [[menu.main]]
+    identifier = "guestbook"
+    name = "Guestbook"
+    url = "/guestbook/"
+    weight = 40
 
   [[menu.main]]
     identifier = "search"
     name = "Search"
     url = "/search/"
-    weight = 40
+    weight = 50
 
 [outputs]
   home = ["HTML", "RSS", "JSON"]
