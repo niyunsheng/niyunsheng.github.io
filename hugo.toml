@@ -31,6 +31,8 @@ buildFuture = false
   ShowHidden = true
 
   math = true
+
+  comments = true
   
   [params.profileMode]
     enabled = false
