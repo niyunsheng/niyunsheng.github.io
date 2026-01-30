@@ -24,5 +24,15 @@ To bridge this gap, I built an interactive visualization tool to help build intu
 
 {{< figure src="demo.gif" title="Fig. 1: Interactive Visualization Demo" caption="Click on any token to see its neighbors. The tool highlights how a 3D sliding window maps to the flattened 1D sequence in real-time." align="center" >}}
 
+### Attention Pattern Examples
+
+To help build intuition, here are four different sliding window configurations with $F=7, H=W=6$:
+
+| | |
+| - | - |
+| {{< figure src="3d_sliding_f_h1_w1.jpg" title="Fig. 2: Full Temporal, No Spatial (f=all, h=1, w=1)" caption="Attends to all frames in the temporal dimension, but only attends to itself in the spatial dimension." align="center" >}} | {{< figure src="3d_sliding_f1_h_w.jpg" title="Fig. 3: No Temporal, Full Spatial (f=1, h=all, w=all)" caption="Attends only to the current frame, but attends to all positions in the spatial dimension." align="center" >}} |
+| {{< figure src="3d_sliding_f3_h_w.jpg" title="Fig. 4: Limited Temporal, Full Spatial (f=3, h=all, w=all)" caption="Attends to a sliding window of 3 frames (including the current frame and its neighbors), and attends to all positions in the spatial dimension." align="center" >}} | {{< figure src="3d_sliding_f3_h3_w3.jpg" title="Fig. 5: Limited Temporal, Limited Spatial (f=3, h=3, w=3)" caption="Attends to a sliding window of 3 frames and a 3×3 spatial neighborhood. This is the most localized attention pattern." align="center" >}} |
+
+
 ### Try it out
 You can play with different window sizes and causal patterns in the live demo linked in the [Project Page](https://niyunsheng.github.io/sliding-window-viz-3D/).
