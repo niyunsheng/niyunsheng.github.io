@@ -34,9 +34,9 @@ $$\text{FLOPs}_{GEMM} = 2 \cdot s \cdot (12h^2) = 2 \cdot s \cdot P$$
 Summing across all layers, where $C$ is the total tokens ($C = \sum s$) and $P$ is the total parameters, the total Linear GEMM FLOPs is $2CP$.
 
 
-### Attention MechanismThe
+### Attention Mechanism
 
-Unlike linear layers, the self-attention core exhibits quadratic scaling with respect to sequence length.
+The Unlike linear layers, the self-attention core exhibits quadratic scaling with respect to sequence length.
 
 
 | Operation           | Calculation        | FLOPs (Forward) |
