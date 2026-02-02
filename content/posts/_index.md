@@ -1,5 +1,5 @@
 ---
-title: "Engineering Notes"
-description: "Deep dives into System Optimization, Custom Kernels (Triton/CUDA), and Distributed Training logic."
+title: "AI R&D Notes"
+description: "Deep dives into Generative AI Algorithms and Infrastructure."
 hidemeta: true
 ---
