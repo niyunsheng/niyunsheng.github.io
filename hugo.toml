@@ -8,8 +8,8 @@ buildDrafts = false
 buildFuture = false
 
 [permalinks]
-  posts = "/posts/:slug/"
-  memos = "/thoughts/:slug/"
+  tech = "/tech/:slug/"
+  life = "/life/:slug/"
 
 [params]
   env = "production"
@@ -27,7 +27,7 @@ buildFuture = false
   ShowCodeCopyButtons = true
   ShowWordCount = true
 
-  mainSections = ["posts", "projects", "thoughts"]
+  mainSections = ["tech", "life"]
   ShowHidden = true
 
   math = true
@@ -39,14 +39,14 @@ buildFuture = false
 
   [params.homeInfoParams]
     Title = "Hi, I'm Yunsheng Ni 👋"
-    Content = "Engineering notes on System Optimization & Kernel Tuning.  \n Focusing on accelerating LLMs & Video Generation."
+    Content = "Engineering notes on System Optimization & AI Algorithms.\nAlso sharing thoughts about life."
 
     [[params.profileMode.buttons]]
-      name = "Blog"
-      url = "/posts"
+      name = "R&D Notes"
+      url = "/tech"
     [[params.profileMode.buttons]]
-      name = "Projects"
-      url = "/projects"
+      name = "Life"
+      url = "/life"
     [[params.profileMode.buttons]]
       name = "GitHub"
       url = "https://github.com/niyunsheng"
@@ -65,15 +65,15 @@ buildFuture = false
 
 [menu]
   [[menu.main]]
-    identifier = "posts"
-    name = "Blog"
-    url = "/posts/"
+    identifier = "tech"
+    name = "R&D Notes"
+    url = "/tech/"
     weight = 10
   
   [[menu.main]]
-    identifier = "projects"
-    name = "Projects"
-    url = "/projects/"
+    identifier = "life"
+    name = "Life"
+    url = "/life/"
     weight = 20
 
   [[menu.main]]
