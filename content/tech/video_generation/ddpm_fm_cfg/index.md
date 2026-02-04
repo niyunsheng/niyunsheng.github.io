@@ -2,9 +2,10 @@
 title: "From DDPM to Flow Matching: The Evolution of Generative Trajectories"
 date: 2026-02-03T23:30:00+08:00
 draft: false
-tags: ["Video Generation", "DiT", "DDPM", "Flow Matching"]
-categories: ["Deep Learning"]
+tags: ["DiT", "DDPM", "Flow Matching", "Classifier-Free Guidance"]
+categories: ["Video Generation"]
 summary: "A technical note on the shift from noise prediction (DDPM) to velocity prediction (Flow Matching), and how CFG acts as a vector field modifier."
+series: ["Video Generation"]
 ---
 
 Generative modeling has evolved from probabilistic denoising to deterministic transport. This note explores the foundational shift from the stochastic curves of [Denoising Diffusion Probabilistic Model (DDPM)](https://arxiv.org/abs/2006.11239) to the straight-line trajectories of [Flow Matching (FM)](https://arxiv.org/abs/2210.02747), and how [Classifier-Free Guidance (CFG)](https://arxiv.org/pdf/2207.12598)—originally designed for diffusion—remains the universal steering mechanism for these modern vector fields.

@@ -2,8 +2,8 @@
 title: "Transformer FLOPs and Attention Overhead"
 date: 2026-01-31T09:30:00+08:00
 draft: false
-tags: ["LLM", "FLOPs", "AI Infra"]
-categories: ["Engineering"]
+tags: ["MFU", "FLOPs"]
+categories: ["Hign Performance"]
 summary: "A rigorous breakdown of FLOPs in Llama-style architectures, deriving the relationship between linear projections and quadratic attention overhead, with insights into sample packing efficiency."
 ---
 

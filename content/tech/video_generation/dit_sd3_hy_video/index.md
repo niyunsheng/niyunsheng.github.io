@@ -2,9 +2,10 @@
 title: "From DiT to Hunyuan: The Evolution of adaLN-Zero in Generative Models"
 date: 2026-02-02T23:30:00+08:00
 draft: false
-tags: ["Video Generation", "DiT", "DDPM", "Flow Matching"]
-categories: ["Deep Learning"]
+tags: ["DiT", "DDPM", "Flow Matching"]
+categories: ["Video Generation"]
 summary: "From DiT to Hunyuan Video, adaLN-Zero remains the gold standard for conditioning. Here's how this zero-initialized module works and why it persists in the era of Flow Matching."
+series: ["Video Generation"]
 ---
 
 The proposal of [**DiT (Diffusion Transformer)**](https://arxiv.org/abs/2212.09748) marked a pivotal moment in generative AI, proving that Transformers could replace U-Net as the backbone for image generation.
