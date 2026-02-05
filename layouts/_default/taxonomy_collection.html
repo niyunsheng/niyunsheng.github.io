@@ -1,0 +1,51 @@
+{{ define "main" }}
+
+{{- /* 1. Breadcrumbs (Native PaperMod Feature) */ -}}
+{{- if not .IsHome }}
+{{- partial "breadcrumbs.html" . -}}
+{{- end }}
+
+{{- /* 2. Page Header */ -}}
+<header class="page-header">
+    <h1>{{ .Title }}</h1>
+    {{- if .Description }}
+    <div class="post-description">
+        {{ .Description }}
+    </div>
+    {{- end }}
+</header>
+
+{{- /* 3. Content Wrapper */ -}}
+{{- /* We use 'post-content' to ensure H2 headers have the correct font/spacing */ -}}
+<div class="post-content">
+    
+    {{- /* Configuration */ -}}
+    {{- $taxonomies := slice "categories" "series" "tags" -}}
+    {{- $titles := dict "categories" "Categories" "series" "Series" "tags" "Tags" -}}
+
+    {{- range $taxName := $taxonomies -}}
+        {{- $taxonomy := index site.Taxonomies $taxName -}}
+        
+        {{- if $taxonomy -}}
+            {{- /* Section Title */ -}}
+            <h2 id="{{ $taxName }}">
+                <a href="#{{ $taxName }}">{{ index $titles $taxName }}</a>
+            </h2>
+            
+            {{- /* Native PaperMod Tag Cloud Style */ -}}
+            <ul class="terms-tags">
+                {{- range $term, $val := $taxonomy -}}
+                    <li>
+                        <a href="{{ $val.Page.Permalink }}">
+                            {{ $val.Page.Title }} 
+                            <sup><strong><sup>{{ $val.Count }}</sup></strong></sup>
+                        </a>
+                    </li>
+                {{- end -}}
+            </ul>
+            {{- /* Spacing between sections */ -}}
+            <br>
+        {{- end -}}
+    {{- end -}}
+</div>
+{{ end }}

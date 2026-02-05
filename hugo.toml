@@ -73,9 +73,9 @@ buildFuture = false
     weight = 10
 
   [[menu.main]]
-    identifier = "series"
-    name = "Series"
-    url = "/series/"
+    identifier = "explore"
+    name = "Explore"
+    url = "/explore/"
     weight = 20
 
   [[menu.main]]
