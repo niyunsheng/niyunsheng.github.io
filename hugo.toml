@@ -9,7 +9,6 @@ buildFuture = false
 
 [permalinks]
   tech = "/:slug/"
-  life = "/:slug/"
 
 [params]
   env = "production"
@@ -45,14 +44,11 @@ buildFuture = false
 
   [params.homeInfoParams]
     Title = "Hi, I'm Yunsheng Ni 👋"
-    Content = "Engineering notes on System Optimization & AI Algorithms.\nAlso sharing thoughts about life."
+    Content = "Engineering notes on System Optimization & AI Algorithms."
 
     [[params.profileMode.buttons]]
       name = "R&D Notes"
       url = "/tech"
-    [[params.profileMode.buttons]]
-      name = "Life"
-      url = "/life"
     [[params.profileMode.buttons]]
       name = "GitHub"
       url = "https://github.com/niyunsheng"
@@ -80,12 +76,6 @@ buildFuture = false
     identifier = "series"
     name = "Series"
     url = "/series/"
-    weight = 10
-
-  [[menu.main]]
-    identifier = "life"
-    name = "Life"
-    url = "/life/"
     weight = 20
 
   [[menu.main]]

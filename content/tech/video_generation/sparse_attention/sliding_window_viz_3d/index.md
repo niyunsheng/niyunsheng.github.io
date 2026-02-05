@@ -5,6 +5,7 @@ draft: false
 tags: ["Sparse Attention", "Visualization"]
 categories: "Video Generation"
 summary: "An interactive tool to visualize the mapping between 1D token sequences and 3D (T, H, W) sliding windows."
+series: "3D Sparse Attention"
 ---
 
 ## How 3D Sliding Attention Works

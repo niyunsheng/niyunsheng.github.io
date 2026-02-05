@@ -5,7 +5,7 @@ draft: false
 tags: ["DiT", "DDPM", "Flow Matching"]
 categories: ["Video Generation"]
 summary: "From DiT to Hunyuan Video, adaLN-Zero remains the gold standard for conditioning. Here's how this zero-initialized module works and why it persists in the era of Flow Matching."
-series: ["Video Generation"]
+series: ["Video Generation Theory"]
 ---
 
 The proposal of [**DiT (Diffusion Transformer)**](https://arxiv.org/abs/2212.09748) marked a pivotal moment in generative AI, proving that Transformers could replace U-Net as the backbone for image generation.
