@@ -9,6 +9,8 @@ summary: "A quantitative Roofline analysis of LLMs on NVIDIA H200. We derive com
 
 To optimize Large Language Models effectively, we must move beyond intuition and rely on first-principles modeling. This post provides a back-of-the-envelope **Roofline analysis** to pinpoint exactly where your training time goes—whether it's compute, memory, or communication—and how to architect your recompute and kernel-fusion strategies accordingly.
 
+![](./llama_arch.png)
+
 ## Roofline Analysis: H200 Baseline & GEMM
 
 ### Hardware Baseline: H200
@@ -91,13 +93,13 @@ Observation:
 * The sum of all small memory-bound operators is roughly equivalent to 0.95x the cost of a single GEMM (assuming standard projections).
 * The total communication cost (4 All2Alls) is roughly 2.1x the cost of a single GEMM.
 
-![](./llama_arch.png)
 
-### Activation Recomputation Strategy
+## Activation Recomputation Strategy
 
 Based on the Roofline analysis, we can derive a hierarchy for Gradient Checkpointing (Activation Recomputation). The goal is to recompute operations that are fast (low arithmetic intensity) or strictly memory bound, and save operations that are expensive.
 
-Priority for Recomputation (Low Cost to High Cost):
+### Priority for Recomputation (Low Cost to High Cost)
+
 1. Memory Bound Ops (Norms, RoPE, Elementwise):
     * Strategy: **Always Recompute**.
     * Reason: High speed, low FLOPs. Saving them consumes memory bandwidth twice (save + load grad), often costing more than recomputing.
@@ -114,7 +116,34 @@ Priority for Recomputation (Low Cost to High Cost):
     * Strategy: Never Recompute.
     * Reason: For long sequences, $O(N^2)$ complexity makes this the most expensive operation.
 
-### Operator Fusion & Epilogue Optimization
+### Deep Dive: The Trap of "Double Checkpointing"
+
+A common pitfall is blindly applying **Block-Level Checkpointing** (wrapping the entire Transformer Layer) when **Kernel-Level Optimization** is already active. This often leads to redundant computation with zero memory gain.
+
+**Case Study: Liger Kernel (RMSNorm & RoPE)**
+
+Consider the [`LigerRMSNormFunction`](https://github.com/linkedin/Liger-Kernel/blob/main/src/liger_kernel/ops/rms_norm.py) and [`LigerRopeFunction`](https://github.com/linkedin/Liger-Kernel/blob/main/src/liger_kernel/ops/rope.py) interfaces. These kernels are designed to be memory-efficient by default:
+* **RMSNorm**: The backward pass rms_norm_backward only requires `X` and `RSTD`. It does not need the forward output `Y`.
+```python
+def backward(ctx, dY):
+    X, RSTD = ctx.saved_tensors
+    # No 'Y' needed here
+    dX = rms_norm_backward(dY, X, RSTD, ...)
+```
+
+* **RoPE**: The backward pass is even more efficient, deriving gradients purely from `dq`, `dk` and the lightweight `cos`, `sin` tables. It saves neither input nor output high-dimensional tensors.
+```python
+def backward(ctx, dq, dk):
+    cos, sin = ctx.saved_tensors
+    # No 'q' or 'k' input/output needed
+    dq, dk = rope_backward(dq, dk, cos, sin)
+```
+
+**Conclusion**: For peak performance, do not stack Block-Level Checkpointing on top of Kernel-Level Recomputation.
+* Use **Kernel Fusion** to handle memory-bound ops (Norms, RoPE).
+* If GEMM outputs cause OOM, use **Activation Offloading** (to CPU) instead of recomputing them. This leverages idle PCIe bandwidth rather than stalling precious Tensor Cores.
+
+## Operator Fusion & Epilogue Optimization
 
 To minimize HBM access and kernel launch overhead, operator fusion is mandatory. The golden rule is: Any sequence of contiguous memory-bound operators must be fused into a single kernel.
 
