@@ -91,3 +91,54 @@ plt.legend()
 plt.grid(True, alpha=0.3)
 plt.savefig("timestep_sampling_density.png")
 ```
+
+
+## 2. The Space Dimension: 3D RoPE
+
+**Source**: HunyuanVideo & Wan2.1.
+
+**The Problem: The 3D Nature of Video**
+Unlike text, which is a strictly 1D sequence, video data inherently possesses three dimensions: Time, Height, and Width. Standard 1D RoPE, originally designed for LLMs, can only encode a single sequence index. It cannot simultaneously represent a token's spatial and temporal coordinates within the 3D volume.
+
+**The Trick: Pre-concatenated 3D RoPE Frequencies**
+To inject full 3D positional awareness, the model factorizes the 3D space. The attention head dimension (e.g., 128 in HunyuanVideo) is logically partitioned to represent the three dimensions ($d_t=16$, $d_h=56$, $d_w=56$).
+
+A brute-force implementation might write a custom CUDA kernel to explicitly apply different rotary frequencies to their respective channel slices on the fly. However, this fragments memory access patterns, significantly degrading memory bandwidth utilization compared to contiguous 1D operations.
+
+The elegant engineering solution is to shift the complexity to the initialization phase and perform a mathematical tensor permutation. Standard 1D RoPE kernels expect the feature dimension to be split into two contiguous halves: $[Half_1, Half_2]$. If we naively concatenate the 1D RoPE outputs for Time (F), Height (H), and Width (W), the memory layout becomes interleaved:
+
+$$[\frac{D_F}{2}, \frac{D_F}{2}, \frac{D_H}{2}, \frac{D_H}{2}, \frac{D_W}{2}, \frac{D_W}{2}]$$
+
+To fix this, we reorder the tensor by grouping all the "first halves" together and all the "second halves" together:
+
+$$[\frac{D_F}{2}, \frac{D_H}{2}, \frac{D_W}{2}, \frac{D_F}{2}, \frac{D_H}{2}, \frac{D_W}{2}]$$
+
+Because the cos and sin embeddings are pre-packed into this exact layout offline, the actual application (apply_rotary_pos_emb) inside the Transformer block remains 100% identical to a standard LLM. This allows the model to directly leverage off-the-shelf, highly optimized LLM infrastructure (like FlashAttention's fused RoPE kernels) with perfectly coalesced memory accesses.
+
+**The Code: Frequency Precomputation**
+Here is the core logic mirroring [HunyuanVideo's implementation](https://github.com/Tencent-Hunyuan/HunyuanVideo/blob/main/hyvideo/modules/posemb_layers.py#L191C1-L258C19), showing the exact channel splitting and reordering.
+
+```python
+import torch
+
+def precompute_3d_rotary_freqs(t_grid, h_grid, w_grid, head_dim=128, theta=10000.0):
+    # 1. Partition the feature channels (HunyuanVideo split: 16, 56, 56)
+    d_t, d_h, d_w = 16, 56, 56
+    
+    # 2. Compute standard 1D RoPE frequencies for each axis
+    # Returns a list of [cos, sin] tuples for each dimension
+    emb_t = get_1d_freqs(d_t, t_grid, theta)
+    emb_h = get_1d_freqs(d_h, h_grid, theta)
+    emb_w = get_1d_freqs(d_w, w_grid, theta)
+    
+    # 3. The Tensor Permutation Trick
+    # Group all first halves (cos) and second halves (sin) to match standard 1D kernel expectations
+    cos_3d = torch.cat([emb_t[0], emb_h[0], emb_w[0]], dim=-1) # [D_F/2, D_H/2, D_W/2]
+    sin_3d = torch.cat([emb_t[1], emb_h[1], emb_w[1]], dim=-1) # [D_F/2, D_H/2, D_W/2]
+    
+    return cos_3d, sin_3d
+
+# Inside the Attention Forward Pass:
+# Q and K are processed by standard 1D RoPE kernels using the mathematically reordered cos/sin.
+# q_rotated, k_rotated = apply_rotary_pos_emb(q, k, cos_3d, sin_3d)
+```
