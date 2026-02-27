@@ -98,3 +98,7 @@ buildFuture = false
 
 [outputs]
   home = ["HTML", "RSS", "JSON"]
+
+[services]
+  [services.googleAnalytics]
+    id = 'G-474RHLSHSZ'
