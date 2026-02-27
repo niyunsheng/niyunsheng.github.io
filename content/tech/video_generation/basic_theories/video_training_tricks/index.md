@@ -1,7 +1,7 @@
 ---
-title: "The Devil in the Details: 5 Engineering Tricks for SOTA Video Models"
+title: "The Devil in the Details: Engineering Tricks for SOTA Video Models"
 date: 2026-02-25T22:00:00+08:00
-draft: true
+draft: false
 tags: ["DiT", "Flow Matching",  "RoPE", "Training Stability"]
 categories: ["Video Generation"]
 summary: "Theory is clean, but training is messy. This note covers 5 essential engineering tricks—from Timestep Shifting to 3D RoPE—that stabilize training and boost performance."
@@ -10,9 +10,8 @@ series: ["Video Generation Theory"]
 
 In Last Part [From DDPM to Flow Matching](/from-ddpm-to-flow-matching-the-evolution-of-generative-trajectories/), we covered the clean theory of Flow Matching. However, making a massive 13B-parameter HunyuanVideo converge isn't just about math; it requires rigorous engineering.
 
-How do models like **Stable Diffusion 3 (SD3)**, **HunyuanVideo**, and **Wan** actually train? Here are the 5 practical engineering tricks across the Time, Space, Model, and Signal dimensions.
-
-Here are the 5 practical tricks used in modern models like SD3, Hunyuan Video, and Flux.
+How do models like **Stable Diffusion 3 (SD3)**, **HunyuanVideo**, and **Wan** actually train? 
+Here are the practical engineering tricks across the Time and Space dimensions.
 
 ## 1. The Time Dimension: Timestep Shift (Logit-Normal)
 
@@ -142,3 +141,6 @@ def precompute_3d_rotary_freqs(t_grid, h_grid, w_grid, head_dim=128, theta=10000
 # Q and K are processed by standard 1D RoPE kernels using the mathematically reordered cos/sin.
 # q_rotated, k_rotated = apply_rotary_pos_emb(q, k, cos_3d, sin_3d)
 ```
+
+---
+Other tricks, Coming soon...
