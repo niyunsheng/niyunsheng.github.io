@@ -152,10 +152,6 @@ def matmul(a, b, activation=""):
     # Allocates output.
     c = torch.empty((M, N), device=a.device, dtype=a.dtype)
     # 1D launch kernel where each block gets its own program.
-    BLOCK_SIZE_M = 128
-    BLOCK_SIZE_N = 128
-    BLOCK_SIZE_K = 64
-    GROUP_SIZE = 4
     grid = lambda Meta: (triton.cdiv(M, Meta['BLOCK_SIZE_M']) * triton.cdiv(N, Meta['BLOCK_SIZE_N']), )
     is_m_major = M >= N
     matmul_kernel[grid](

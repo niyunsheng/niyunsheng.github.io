@@ -293,7 +293,9 @@ Key benefits include:
 * Hardware Bounds Checking: Out-of-bounds memory accesses are automatically padded with zeros by the hardware, eliminating the need for manual masking (mask=...) in the kernel.
 * Address Generation: Strides and offsets are encoded into a TMA Descriptor, removing integer arithmetic overhead from the SM.
 
-### Implementation with `tl.make_block_ptr`
+### Implementations
+
+* **Implementation with `tl.make_block_ptr`**
 
 `tl.make_block_ptr` is Triton's standard abstraction for block-level memory operations. On Hopper architectures, the Triton compiler can automatically lower `make_block_ptr` and `tl.load` into hardware TMA instructions if the memory access patterns meet specific alignment and continuity requirements.
 
@@ -324,7 +326,7 @@ def matmul_kernel(
         b_ptr, shape=(K, N), strides=(stride_bk, stride_bn),
         offsets=(0, pid_n * BLOCK_SIZE_N),
         block_shape=(BLOCK_SIZE_K, BLOCK_SIZE_N),
-        order=(0, 1)
+        order=(1, 0)
     )
     accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
     for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
@@ -349,7 +351,7 @@ def matmul_kernel(
     tl.store(c_block_ptr, c, boundary_check=(0, 1))
 ```
 
-### Implementation with `tl.make_tensor_descriptor` (Inside the Kernel)
+* **Implementation with `tl.make_tensor_descriptor` (Inside the Kernel)**
 
 For more explicit control over Hopper's experimental TMA features, Triton provides the `tl.make_tensor_descriptor` API. Instead of relying on the compiler's heuristics to lower `make_block_ptr`, you explicitly define the hardware descriptor inside the device code.
 
@@ -420,7 +422,7 @@ def matmul_kernel(
     c_desc.store([base_offset_m, base_offset_n], c)
 ```
 
-### Implementation with TensorDescriptor (Outside the Kernel)
+* **Implementation with `TensorDescriptor` (Outside the Kernel)**
 
 Constructing descriptors dynamically inside the kernel consumes instruction cycles on the GPU. A more performant engineering practice is to initialize the TMA descriptors on the host (CPU) before launching the kernel and pass them as standard arguments.
 
@@ -484,4 +486,119 @@ def matmul_kernel(
     c = accumulator.to(tl.float16)
 
     c_desc.store([base_offset_m, base_offset_n], c)
+```
+
+
+## Step 4: Persistent Kernel for Matmul
+
+Standard kernel execution models map a single program (thread block) to a single output tile. For large matrices, this results in launching tens of thousands of blocks, delegating the scheduling entirely to the hardware warp scheduler.
+
+A persistent kernel bypasses the hardware scheduler's overhead by launching a fixed number of thread blocks—typically matching the maximum number of Streaming Multiprocessors (SMs) on the target GPU. Each thread block executes a `while` loop, continuously fetching and computing output tiles until the entire matrix is processed.
+
+**Key Benefits**
+* **Reduced Launch Overhead**: Eliminates hardware block scheduling bottlenecks for large computational grids.
+* **Software-Defined Scheduling**: Enables custom tile distribution logic across SMs, which can be utilized to maximize L2 cache locality beyond standard spatial swizzling.
+* **Persistent Shared Memory**: Data loaded into SRAM can potentially be reused across loop iterations if the scheduling logic is designed to exploit temporal locality.
+
+**Kernel Implementation**
+
+The primary modification is wrapping the execution logic in a `while` loop. The initial `pid` is fetched using `tl.program_id(0)`, and after each tile is computed, the pid increments by the total number of running programs (tl.num_programs(0)).
+
+```python
+@triton.jit
+def matmul_kernel_persistent(
+        a_ptr, b_ptr, c_ptr,
+        M, N, K,
+        stride_am, stride_ak,
+        stride_bk, stride_bn,
+        stride_cm, stride_cn,
+        BLOCK_SIZE_M: tl.constexpr, BLOCK_SIZE_N: tl.constexpr, BLOCK_SIZE_K: tl.constexpr,
+        GROUP_SIZE_M: tl.constexpr,
+        ACTIVATION: tl.constexpr,
+):
+    pid = tl.program_id(axis=0)
+    num_programs = tl.num_programs(axis=0)
+
+    num_pid_m = tl.cdiv(M, BLOCK_SIZE_M)
+    num_pid_n = tl.cdiv(N, BLOCK_SIZE_N)
+    total_blocks = num_pid_m * num_pid_n
+
+    while pid < total_blocks:
+        # -- Swizzling Logic (Inherited from Step 2) --
+        num_pid_in_group = GROUP_SIZE_M * num_pid_n
+        group_id = pid // num_pid_in_group
+        first_pid_m = group_id * GROUP_SIZE_M
+        group_size_m = min(num_pid_m - first_pid_m, GROUP_SIZE_M)
+        pid_m = first_pid_m + ((pid % num_pid_in_group) % group_size_m)
+        pid_n = (pid % num_pid_in_group) // group_size_m
+
+        # -- TMA Pointers Setup (Inherited from Step 3) --
+        a_block_ptr = tl.make_block_ptr(
+            a_ptr, shape=(M, K), strides=(stride_am, stride_ak),
+            offsets=(pid_m * BLOCK_SIZE_M, 0),
+            block_shape=(BLOCK_SIZE_M, BLOCK_SIZE_K),
+            order=(1, 0)
+        )
+        b_block_ptr = tl.make_block_ptr(
+            b_ptr, shape=(K, N), strides=(stride_bk, stride_bn),
+            offsets=(0, pid_n * BLOCK_SIZE_N),
+            block_shape=(BLOCK_SIZE_K, BLOCK_SIZE_N),
+            order=(1, 0)
+        )
+
+        # -- Compute --
+        accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
+        for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
+            a = tl.load(a_block_ptr, boundary_check=(0, 1))
+            b = tl.load(b_block_ptr, boundary_check=(0, 1))
+            accumulator = tl.dot(a, b, accumulator)
+            a_block_ptr = tl.advance(a_block_ptr, (0, BLOCK_SIZE_K))
+            b_block_ptr = tl.advance(b_block_ptr, (BLOCK_SIZE_K, 0))
+
+        if ACTIVATION == "leaky_relu":
+            accumulator = leaky_relu(accumulator)
+        c = accumulator.to(tl.float16)
+
+        # -- Store --
+        c_block_ptr = tl.make_block_ptr(
+            c_ptr, shape=(M, N), strides=(stride_cm, stride_cn),
+            offsets=(pid_m * BLOCK_SIZE_M, pid_n * BLOCK_SIZE_N),
+            block_shape=(BLOCK_SIZE_M, BLOCK_SIZE_N),
+            order=(1, 0)
+        )
+        tl.store(c_block_ptr, c, boundary_check=(0, 1))
+
+        # Advance to the next logical block
+        pid += num_programs
+```
+
+**Launcher Implementation**
+
+The launcher must be updated to restrict the grid size to the GPU's available SMs. Launching more blocks than SMs defeats the purpose of a persistent kernel, as it reintroduces hardware scheduling overhead.
+
+```python
+def matmul_persistent(a, b, activation=""):
+    assert a.shape[1] == b.shape[0], "Incompatible dimensions"
+    assert a.is_contiguous(), "Matrix A must be contiguous"
+    M, K = a.shape
+    K, N = b.shape
+    c = torch.empty((M, N), device=a.device, dtype=a.dtype)
+
+    
+    # Query hardware SM count.
+    # e.g., A100 has 108 SMs, H100 has 132 SMs.
+    num_sms = torch.cuda.get_device_properties(a.device).multi_processor_count
+
+    # The grid size is bounded by the hardware SM count.
+    grid = lambda Meta: (min(triton.cdiv(M, Meta['BLOCK_SIZE_M'])*triton.cdiv(N, Meta['BLOCK_SIZE_N']), num_sms), )
+
+    matmul_kernel_persistent[grid](
+        a, b, c,
+        M, N, K,
+        a.stride(0), a.stride(1),
+        b.stride(0), b.stride(1),
+        c.stride(0), c.stride(1),
+        ACTIVATION=activation
+    )
+    return c
 ```
