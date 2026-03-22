@@ -1,0 +1,55 @@
+<div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; font-family: sans-serif;">
+  {{- /* Categories - Blue Box */ -}}
+  {{- with .Params.categories -}}
+    {{- $vars := . -}}
+    {{- if (reflect.IsSlice $vars) -}}
+      {{- range $vars -}}
+        <a href="{{ "categories/" | absURL }}{{ . | urlize }}/" 
+           style="background: rgba(0, 123, 255, 0.1); color: #007bff; border: 1px solid rgba(0, 123, 255, 0.3); padding: 1px 6px; border-radius: 4px; font-size: 11px; text-decoration: none;">
+           {{ . }}
+        </a>
+      {{- end -}}
+    {{- else -}}
+      <a href="{{ "categories/" | absURL }}{{ $vars | urlize }}/" 
+         style="background: rgba(0, 123, 255, 0.1); color: #007bff; border: 1px solid rgba(0, 123, 255, 0.3); padding: 1px 6px; border-radius: 4px; font-size: 11px; text-decoration: none;">
+         {{ $vars }}
+      </a>
+    {{- end -}}
+  {{- end -}}
+
+  {{- /* Series - Purple Box */ -}}
+  {{- with .Params.series -}}
+    {{- $vars := . -}}
+    {{- if (reflect.IsSlice $vars) -}}
+      {{- range $vars -}}
+        <a href="{{ "series/" | absURL }}{{ . | urlize }}/" 
+           style="background: rgba(155, 89, 182, 0.1); color: #9b59b6; border: 1px solid rgba(155, 89, 182, 0.3); padding: 1px 6px; border-radius: 4px; font-size: 11px; text-decoration: none;">
+           {{ . }}
+        </a>
+      {{- end -}}
+    {{- else -}}
+      <a href="{{ "series/" | absURL }}{{ $vars | urlize }}/" 
+         style="background: rgba(155, 89, 182, 0.1); color: #9b59b6; border: 1px solid rgba(155, 89, 182, 0.3); padding: 1px 6px; border-radius: 4px; font-size: 11px; text-decoration: none;">
+         {{ $vars }}
+      </a>
+    {{- end -}}
+  {{- end -}}
+
+  {{- /* Tags - Grey Box */ -}}
+  {{- with .Params.tags -}}
+    {{- $vars := . -}}
+    {{- if (reflect.IsSlice $vars) -}}
+      {{- range $vars -}}
+        <a href="{{ "tags/" | absURL }}{{ . | urlize }}/" 
+           style="background: rgba(128, 128, 128, 0.1); color: #757575; border: 1px solid rgba(128, 128, 128, 0.3); padding: 1px 6px; border-radius: 4px; font-size: 11px; text-decoration: none;">
+           #{{ . }}
+        </a>
+      {{- end -}}
+    {{- else -}}
+      <a href="{{ "tags/" | absURL }}{{ $vars | urlize }}/" 
+         style="background: rgba(128, 128, 128, 0.1); color: #757575; border: 1px solid rgba(128, 128, 128, 0.3); padding: 1px 6px; border-radius: 4px; font-size: 11px; text-decoration: none;">
+         #{{ $vars }}
+      </a>
+    {{- end -}}
+  {{- end -}}
+</div>
