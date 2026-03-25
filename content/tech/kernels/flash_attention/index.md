@@ -59,6 +59,8 @@ $$LSE = m^{(new)} + \log_2(l^{(new)}) = \log_2{\sum{e^{x_i}}}$$
 
 When the sequence length $N$ is not perfectly divisible by the block size, trailing padding positions must be explicitly masked with $-\infty$ before computing the block maximum and exponentials.
 
+![](./fa_forward.png)
+
 If left unmasked (i.e., padded with $0$), the exponential operation evaluates to $2^0 = 1$, introducing severe numerical errors:
 
 1. The normalizer $l^{(new)}$ is artificially inflated by $1$ for every invalid position.
@@ -173,11 +175,13 @@ $$
 $$
 {{< /math >}}
 
-The precomputed vector $\mathbf{D} \in \mathbb{R}^N$ is calculated before launching the backward kernels, preventing redundant element-wise reductions inside the tight inner loops.
+The precomputed vector $\mathbf{D} \in \mathbb{R}^N$ (passed as the `delta` parameter in the Triton implementation) is calculated before launching the backward kernels, preventing redundant element-wise reductions inside the tight inner loops.
 
 ### `dQ` Computation
 
 To compute $\mathbf{dQ}$, the kernel keeps a block of $\mathbf{Q}$ and $\mathbf{dO}$ resident in SRAM while iterating over blocks of $\mathbf{K}$ and $\mathbf{V}$. The attention probabilities $\mathbf{P}$ and intermediate gradient $\mathbf{dS}$ are dynamically recomputed using the $LSE$ saved during the forward pass, allowing $\mathbf{dQ}$ to be accumulated entirely in SRAM.
+
+![](./fa_backward_dq.png)
 
 ### The `NaN` Hazard for Masked Positions
 Explicitly masking padded positions of $\mathbf{Q}\mathbf{K}^\top$ to $-\infty$ is mandatory during recomputation. Without it, padded $\mathbf{K}$ vectors (which are zeroed out) produce a dot product of $0$. If a valid query has a large negative $LSE$ (e.g., $-20$), the unmasked exponent evaluates to $2^{0 - (-20)} = 2^{20}$. This overflows float16 limits, yielding Inf. The subsequent calculation multiplies this by padded zeros ($\text{Inf} \times 0$), resulting in NaN and destroying the gradient tensor. Masking ensures the exponent evaluates safely to $2^{-\infty} = 0$.
@@ -185,6 +189,26 @@ Explicitly masking padded positions of $\mathbf{Q}\mathbf{K}^\top$ to $-\infty$ 
 ### `dKdV` Computation
 
 To compute $\mathbf{dK}$ and $\mathbf{dV}$, the computation loop is inverted. The kernel assigns a block of $\mathbf{K}$ and $\mathbf{V}$ to SRAM and iterates over the sequence dimension to fetch blocks of $\mathbf{Q}$ and $\mathbf{dO}$. Using the exact same recomputation logic and masking rules, $\mathbf{dV}$ and $\mathbf{dK}$ are accumulated directly into SRAM and written to HBM once complete.
+
+### Implicit Masking in the Q Dimension
+
+In the `_bwd_dk_dv_kernel`, explicit `-inf` masking is only applied to the KV sequence dimension ($n$). For the Q sequence dimension ($m$), **the kernel relies on implicit zero-padding rather than explicit masking**.
+
+When the Q block indices exceed the actual sequence length, Triton's `boundary_check=(0, 1)` automatically pads the out-of-bounds elements of $\mathbf{Q}$ and $\mathbf{dO}$ with zeros. Similarly, $\mathbf{LSE}$ and $\Delta$ are zero-padded via the `mask=offs_m < SEQ` argument in `tl.load`.
+
+This zero-padding propagates safely through the gradient computation. Specifically, $\mathbf{Q}\mathbf{K}^T$ evaluates to $0$, resulting in $P = 2^{0 - 0} = 1$. Although a non-zero $P$ at padding positions seems mathematically incorrect, it does not corrupt the output gradients because $\mathbf{dO}$ is an all-zero matrix in this region:
+* **For $\mathbf{dV}$**: The matrix multiplication $\mathbf{dV} += P^T \mathbf{dO}$ evaluates to $0$.
+* **For $\mathbf{dK}$**: The intermediate variable $dP = \mathbf{dO}\mathbf{V}^T = 0$, and $\Delta = 0$. This leads to $dS = P \cdot (dP - \Delta) \cdot \text{scale} = 0$. Consequently, the matrix multiplication $\mathbf{dK} += dS^T \mathbf{Q}$ also evaluates to $0$.
+
+This implicit masking strategy avoids redundant bound checks and `-inf` assignments in the inner $m$-loop, improving overall kernel performance. However, the correctness of this optimization strictly depends on the assumption that out-of-bounds elements in $\mathbf{dO}$ and $\mathbf{Q}$ are **safely zero-padded during memory loads**.
+
+### Explicit Masking Requirement for Non-Zero Padding
+
+**The reliance on implicit zero-padding fails if the input tensors are not strictly zeroed out in the padded regions**. In architectures requiring manual sequence padding before the attention kernel—such as Variable Sparse Attention (VSA)—padding tokens might contain non-zero values or residual data. If $\mathbf{Q}$ or $\mathbf{dO}$ contains non-zero values in out-of-bounds regions, the mathematical cancellation fails. The non-zero $\mathbf{dO}$ will interact with the intermediate $P$ matrix (which evaluates to $1$ when $\mathbf{Q}\mathbf{K}^T=0$ and $\mathbf{LSE}=0$), leading to erroneous gradient accumulations in $\mathbf{dK}$ and $\mathbf{dV}$. Under these conditions, explicit masking for the query dimension ($m$) is strictly required.
+
+Crucially, this mask must be applied by directly zeroing out $P$, rather than setting $\mathbf{Q}\mathbf{K}^T$ to $-\infty$. Because the $\mathbf{LSE}$ values at out-of-bounds positions are undefined (and frequently recorded as $-\infty$ during the forward pass), masking $\mathbf{Q}\mathbf{K}^T$ to $-\infty$ can trigger a $-\infty - (-\infty)$ operation when calculating $\mathbf{Q}\mathbf{K}^T - \mathbf{LSE}$. This yields `NaN` and corrupts the entire gradient matrix. Explicitly forcing $P$ to $0.0$ after the exponential evaluation completely bypasses this numerical instability and safely halts gradient propagation to out-of-bounds indices.
+
+![](./fa_backward_dkdv.png)
 
 ### Triton Implementation (Backward)
 
@@ -336,6 +360,17 @@ def _bwd_dk_dv_kernel(
 
         p = tl.math.exp2(qk - lse[:, None])
 
+        # If the input at padding positions cannot be guaranteed to be strictly 0,
+        # we must explicitly mask `p` to 0.0 along the m dimension (Query dimension).
+        # Note: Because the `lse` values at out-of-bounds positions are uncertain
+        # (they might be recorded as -inf during the forward pass), setting `qk` to -inf 
+        # could result in evaluating exp2(-inf - (-inf)), which yields NaN. 
+        # This fails to guarantee that `p` evaluates to 0. 
+        # Therefore, the zero-masking must be applied directly to `p` after its computation.
+        if start_m_idx + BLOCK_M >= SEQ:
+            mask_m = offs_m < SEQ
+            p = tl.where(mask_m[:, None], p, 0.0)
+
         dv = tl.dot(tl.trans(p).to(do.dtype), do, dv)
 
         dp = tl.dot(do, tl.trans(v))
@@ -361,6 +396,6 @@ def _bwd_dk_dv_kernel(
 
 ## Architecture Design: Triton vs. CUDA
 
-The backward pass implementation differs fundamentally between the official CUDA release and this Triton version due to framework constraints regarding memory atomics.
+The backward pass implementation differs fundamentally between the official CUDA release and this Triton version, primarily due to the performance penalty of global memory atomics.
 * **CUDA (Single Kernel, $10 N^2 d$ FLOPS)**: Uses an outer loop over $\mathbf{K}/\mathbf{V}$ and an inner loop over $\mathbf{Q}/\mathbf{dO}$. It accumulates $\mathbf{dK}$ and $\mathbf{dV}$ purely in SRAM, but requires hardware atomicAdd to update $\mathbf{dQ}$ in HBM due to concurrent thread block writes. It is computationally optimal, recomputing $\mathbf{Q}\mathbf{K}^\top$ only once ($10 N^2 d$ FLOPS).
-* **Triton (Two Kernels, $12 N^2 d$ FLOPS)**: Managing fine-grained atomics across concurrent blocks is inefficient without direct CUDA C++ tuning. To avoid atomic reductions and memory contention, Triton splits the backward pass into two non-overlapping kernels (`_bwd_dq_kernel` and `_bwd_dk_dv_kernel`), allowing all gradients to accumulate exclusively in SRAM. The tradeoff is computational redundancy: $\mathbf{Q}\mathbf{K}^\top$ and $\mathbf{P}$ are recomputed twice, increasing the total workload to $12 N^2 d$ FLOPS, trading extra compute for memory safety and bandwidth efficiency.
+* **Triton (Two Kernels, $12 N^2 d$ FLOPS)**: While Triton supports `tl.atomic_add`, managing massive concurrent atomic writes to HBM across thread blocks often leads to severe L2 cache thrashing and serialization overhead. To avoid atomic reductions and memory contention, Triton splits the backward pass into two non-overlapping kernels (`_bwd_dq_kernel` and `_bwd_dk_dv_kernel`), allowing all gradients to accumulate exclusively in SRAM. The tradeoff is computational redundancy: $\mathbf{Q}\mathbf{K}^\top$ and $\mathbf{P}$ are recomputed twice, increasing the total workload to $12 N^2 d$ FLOPS, trading extra compute for memory safety and bandwidth efficiency.
