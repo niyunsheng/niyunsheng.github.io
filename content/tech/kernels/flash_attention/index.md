@@ -181,8 +181,6 @@ The precomputed vector $\mathbf{D} \in \mathbb{R}^N$ (passed as the `delta` para
 
 To compute $\mathbf{dQ}$, the kernel keeps a block of $\mathbf{Q}$ and $\mathbf{dO}$ resident in SRAM while iterating over blocks of $\mathbf{K}$ and $\mathbf{V}$. The attention probabilities $\mathbf{P}$ and intermediate gradient $\mathbf{dS}$ are dynamically recomputed using the $LSE$ saved during the forward pass, allowing $\mathbf{dQ}$ to be accumulated entirely in SRAM.
 
-![](./fa_backward_dq.png)
-
 ### The `NaN` Hazard for Masked Positions
 Explicitly masking padded positions of $\mathbf{Q}\mathbf{K}^\top$ to $-\infty$ is mandatory during recomputation. Without it, padded $\mathbf{K}$ vectors (which are zeroed out) produce a dot product of $0$. If a valid query has a large negative $LSE$ (e.g., $-20$), the unmasked exponent evaluates to $2^{0 - (-20)} = 2^{20}$. This overflows float16 limits, yielding Inf. The subsequent calculation multiplies this by padded zeros ($\text{Inf} \times 0$), resulting in NaN and destroying the gradient tensor. Masking ensures the exponent evaluates safely to $2^{-\infty} = 0$.
 
@@ -202,13 +200,20 @@ This zero-padding propagates safely through the gradient computation. Specifical
 
 This implicit masking strategy avoids redundant bound checks and `-inf` assignments in the inner $m$-loop, improving overall kernel performance. However, the correctness of this optimization strictly depends on the assumption that out-of-bounds elements in $\mathbf{dO}$ and $\mathbf{Q}$ are **safely zero-padded during memory loads**.
 
-### Explicit Masking Requirement for Non-Zero Padding
+### Robustness Against Non-Zero Padding (Dirty Data)
 
-**The reliance on implicit zero-padding fails if the input tensors are not strictly zeroed out in the padded regions**. In architectures requiring manual sequence padding before the attention kernel—such as Variable Sparse Attention (VSA)—padding tokens might contain non-zero values or residual data. If $\mathbf{Q}$ or $\mathbf{dO}$ contains non-zero values in out-of-bounds regions, the mathematical cancellation fails. The non-zero $\mathbf{dO}$ will interact with the intermediate $P$ matrix (which evaluates to $1$ when $\mathbf{Q}\mathbf{K}^T=0$ and $\mathbf{LSE}=0$), leading to erroneous gradient accumulations in $\mathbf{dK}$ and $\mathbf{dV}$. Under these conditions, explicit masking for the query dimension ($m$) is strictly required.
+It might intuitively seem that explicit masking is required if the padded regions of $\mathbf{Q}$ contain non-zero values (e.g., "dirty data" introduced by non-zero bias in preceding Linear layers, which is common in manual padding workflows like Variable Sparse Attention). However, explicit masking in the Query ($m$) dimension remains entirely unnecessary even with dirty data.
 
-Crucially, this mask must be applied by directly zeroing out $P$, rather than setting $\mathbf{Q}\mathbf{K}^T$ to $-\infty$. Because the $\mathbf{LSE}$ values at out-of-bounds positions are undefined (and frequently recorded as $-\infty$ during the forward pass), masking $\mathbf{Q}\mathbf{K}^T$ to $-\infty$ can trigger a $-\infty - (-\infty)$ operation when calculating $\mathbf{Q}\mathbf{K}^T - \mathbf{LSE}$. This yields `NaN` and corrupts the entire gradient matrix. Explicitly forcing $P$ to $0.0$ after the exponential evaluation completely bypasses this numerical instability and safely halts gradient propagation to out-of-bounds indices.
+This robustness is guaranteed by PyTorch's Autograd mechanism. In practice, models use operations like `unpad` (index selection) or sequence slicing after the attention block. **During the backward pass, Autograd strictly zeroes out the incoming gradient $\mathbf{dO}$ for all unselected padding positions.**
 
-![](./fa_backward_dkdv.png)
+When $\mathbf{dO} = 0$ for padding tokens, the kernel's mathematical cancellation perfectly shields the dirty data:
+1. The intermediate variables evaluate to $0$: $\Delta = 0$ and $\mathbf{dP} = \mathbf{dO}\mathbf{V}^T = 0$.
+2. The attention scalar gradient evaluates to $0$: $\mathbf{dS} = \mathbf{P} \cdot (\mathbf{dP} - \Delta) \cdot \text{scale} = 0$.
+3. During the gradient update $\mathbf{dK} += \mathbf{dS}^T \mathbf{Q}$, any non-zero dirty data in $\mathbf{Q}$ is multiplied by $\mathbf{dS} = 0$, yielding zero contribution.
+
+This mathematical property safely isolates the model gradients from the padding region data, completely eliminating the need for extra `tl.where` masking instructions inside the Triton inner loop.
+
+![](./fa_backward.png)
 
 ### Triton Implementation (Backward)
 
@@ -359,17 +364,6 @@ def _bwd_dk_dv_kernel(
             qk = tl.where(mask_n[None, :], qk, float("-inf"))
 
         p = tl.math.exp2(qk - lse[:, None])
-
-        # If the input at padding positions cannot be guaranteed to be strictly 0,
-        # we must explicitly mask `p` to 0.0 along the m dimension (Query dimension).
-        # Note: Because the `lse` values at out-of-bounds positions are uncertain
-        # (they might be recorded as -inf during the forward pass), setting `qk` to -inf 
-        # could result in evaluating exp2(-inf - (-inf)), which yields NaN. 
-        # This fails to guarantee that `p` evaluates to 0. 
-        # Therefore, the zero-masking must be applied directly to `p` after its computation.
-        if start_m_idx + BLOCK_M >= SEQ:
-            mask_m = offs_m < SEQ
-            p = tl.where(mask_m[:, None], p, 0.0)
 
         dv = tl.dot(tl.trans(p).to(do.dtype), do, dv)
 
