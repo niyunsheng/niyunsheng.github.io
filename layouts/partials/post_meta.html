@@ -1,3 +1,23 @@
+{{- $scratch := newScratch }}
+
+{{- if not .Date.IsZero -}}
+{{- $scratch.Add "meta" (slice (printf "<span title='%s'>%s</span>" (.Date) (.Date | time.Format (default ":date_long" site.Params.DateFormat)))) }}
+{{- end }}
+
+{{- if (.Param "ShowReadingTime") -}}
+{{- $scratch.Add "meta" (slice (printf "<span>%s</span>" (i18n "read_time" .ReadingTime | default (printf "%d min" .ReadingTime)))) }}
+{{- end }}
+
+{{- if (.Param "ShowWordCount") -}}
+{{- $scratch.Add "meta" (slice (printf "<span>%s</span>" (i18n "words" .WordCount | default (printf "%d words" .WordCount)))) }}
+{{- end }}
+
+{{- if not (.Param "hideAuthor") -}}
+{{- with (partial "author.html" .) }}
+{{- $scratch.Add "meta" (slice (printf "<span>%s</span>" .)) }}
+{{- end }}
+{{- end }}
+
 <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; font-family: sans-serif;">
   {{- /* Categories - Blue Box */ -}}
   {{- with .Params.categories -}}
@@ -53,3 +73,9 @@
     {{- end -}}
   {{- end -}}
 </div>
+
+{{- with ($scratch.Get "meta") }}
+<div style="display: block; margin-top: 4px;">
+  {{- delimit . "&nbsp;·&nbsp;" | safeHTML -}}
+</div>
+{{- end -}}
