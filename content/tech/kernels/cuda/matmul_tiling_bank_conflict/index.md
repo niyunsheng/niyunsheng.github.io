@@ -133,6 +133,19 @@ $$
 $$
 {{</math>}}
 
+> For a row-major `float` tile, each 4-byte word advances to the next bank. After 32 floats, the bank index wraps around:
+> ```text
+> Address (bytes):  0    4    8    12   ...  124
+>                 ┌────┬────┬────┬────┬─────┬────┐
+>                 │ B0 │ B1 │ B2 │ B3 │ ... │B31 │
+>                 ├────┼────┼────┼────┼─────┼────┤
+>                 │ B0 │ B1 │ B2 │ B3 │ ... │B31 │  (+128 bytes)
+>                 ├────┼────┼────┼────┼─────┼────┤
+>                 │ B0 │ B1 │ B2 │ B3 │ ... │B31 │  (+256 bytes)
+>                 └────┴────┴────┴────┴─────┴────┘
+>                    Each cell = 4 bytes
+>```
+
 Because $k$ is constant for the entire warp, all 32 threads attempt to access the exact same bank simultaneously. This forces the hardware to serialize the requests, resulting in a catastrophic **32-way bank conflict** that cripples compute performance.
 
 ## Shared Memory Transposition: Trading Read Conflicts for Write Conflicts
